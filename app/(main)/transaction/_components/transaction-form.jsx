@@ -28,6 +28,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { CreateAccountDrawer } from "@/components/create-account-drawer";
 import { cn } from "@/lib/utils";
 import { createTransaction, updateTransaction } from "@/actions/transaction";
+import { saveCategorizationFeedback } from "@/actions/categorization-feedback";
 import { transactionSchema } from "@/app/lib/schema";
 import { ReceiptScanner } from "./recipt-scanner";
 
@@ -54,27 +55,28 @@ export function AddTransactionForm({
     defaultValues:
       editMode && initialData
         ? {
-            type: initialData.type,
-            amount: initialData.amount.toString(),
-            description: initialData.description,
-            accountId: initialData.accountId,
-            category: initialData.category,
-            date: new Date(initialData.date),
-            isRecurring: initialData.isRecurring,
-            ...(initialData.recurringInterval && {
-              recurringInterval: initialData.recurringInterval,
-            }),
-          }
+          type: initialData.type,
+          amount: initialData.amount.toString(),
+          description: initialData.description,
+          accountId: initialData.accountId,
+          category: initialData.category,
+          date: new Date(initialData.date),
+          isRecurring: initialData.isRecurring,
+          ...(initialData.recurringInterval && {
+            recurringInterval: initialData.recurringInterval,
+          }),
+        }
         : {
-            type: "EXPENSE",
-            amount: "",
-            description: "",
-            accountId: accounts.find((ac) => ac.isDefault)?.id,
-            date: new Date(),
-            isRecurring: false,
-          },
+          type: "EXPENSE",
+          amount: "",
+          description: "",
+          accountId: accounts.find((ac) => ac.isDefault)?.id,
+          date: new Date(),
+          isRecurring: false,
+        },
   });
   const [mlConfidence, setMlConfidence] = useState(null);
+  const [predictedCategory, setPredictedCategory] = useState(null);
 
   const {
     loading: transactionLoading,
@@ -82,11 +84,33 @@ export function AddTransactionForm({
     data: transactionResult,
   } = useFetch(editMode ? updateTransaction : createTransaction);
 
-  const onSubmit = (data) => {
+  const onSubmit = async (data) => {
     const formData = {
       ...data,
       amount: parseFloat(data.amount),
     };
+
+    if (
+
+      predictedCategory &&
+
+      predictedCategory !== data.category
+
+    ) {
+
+      await saveCategorizationFeedback({
+
+        description: data.description || "",
+
+        predictedCategory,
+
+        actualCategory: data.category,
+
+        confidence: mlConfidence,
+
+      });
+
+    }
 
     if (editMode) {
       transactionFn(editId, formData);
@@ -128,7 +152,7 @@ export function AddTransactionForm({
 
   useEffect(() => {
     if (!description || description.length < 3) return;
-  
+
     const timer = setTimeout(async () => {
       try {
         const response = await fetch("/api/categorize", {
@@ -140,33 +164,34 @@ export function AddTransactionForm({
             description,
           }),
         });
-  
+
         const data = await response.json();
-  
+
         if (data.category) {
           const categoryMap = {
             rent: "housing",
             other: "other-expense",
           };
-          
+
           const targetCategory =
             categoryMap[data.category] || data.category;
-          
+
           const matchingCategory = categories.find(
             (cat) => cat.id === targetCategory
           );
-  
+
           if (matchingCategory) {
             setValue("category", matchingCategory.id);
+            setPredictedCategory(matchingCategory.id);
           }
-  
+
           setMlConfidence(data.confidence);
         }
       } catch (error) {
         console.error("Categorization error:", error);
       }
     }, 100);
-  
+
     return () => clearTimeout(timer);
   }, [description, categories, setValue]);
 
@@ -250,9 +275,9 @@ export function AddTransactionForm({
       <div className="space-y-2">
         <label className="text-sm font-medium">Category</label>
         <Select
-  value={watch("category")}
-  onValueChange={(value) => setValue("category", value)}
->
+          value={watch("category")}
+          onValueChange={(value) => setValue("category", value)}
+        >
           <SelectTrigger>
             <SelectValue placeholder="Select category" />
           </SelectTrigger>
@@ -267,7 +292,7 @@ export function AddTransactionForm({
         {errors.category && (
           <p className="text-sm text-red-500">{errors.category.message}</p>
         )}
-        
+
       </div>
 
       {/* Date */}
