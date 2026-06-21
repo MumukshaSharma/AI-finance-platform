@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CalendarIcon, Loader2 } from "lucide-react";
@@ -74,6 +74,7 @@ export function AddTransactionForm({
             isRecurring: false,
           },
   });
+  const [mlConfidence, setMlConfidence] = useState(null);
 
   const {
     loading: transactionLoading,
@@ -123,6 +124,52 @@ export function AddTransactionForm({
   const type = watch("type");
   const isRecurring = watch("isRecurring");
   const date = watch("date");
+  const description = watch("description");
+
+  useEffect(() => {
+    if (!description || description.length < 3) return;
+  
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch("/api/categorize", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            description,
+          }),
+        });
+  
+        const data = await response.json();
+  
+        if (data.category) {
+          const categoryMap = {
+            rent: "housing",
+            other: "other-expense",
+          };
+          
+          const targetCategory =
+            categoryMap[data.category] || data.category;
+          
+          const matchingCategory = categories.find(
+            (cat) => cat.id === targetCategory
+          );
+  
+          if (matchingCategory) {
+            setValue("category", matchingCategory.id);
+          }
+  
+          setMlConfidence(data.confidence);
+        }
+      } catch (error) {
+        console.error("Categorization error:", error);
+      }
+    }, 100);
+  
+    return () => clearTimeout(timer);
+  }, [description, categories, setValue]);
+
 
   const filteredCategories = categories.filter(
     (category) => category.type === type
@@ -203,9 +250,9 @@ export function AddTransactionForm({
       <div className="space-y-2">
         <label className="text-sm font-medium">Category</label>
         <Select
-          onValueChange={(value) => setValue("category", value)}
-          defaultValue={getValues("category")}
-        >
+  value={watch("category")}
+  onValueChange={(value) => setValue("category", value)}
+>
           <SelectTrigger>
             <SelectValue placeholder="Select category" />
           </SelectTrigger>
@@ -220,6 +267,7 @@ export function AddTransactionForm({
         {errors.category && (
           <p className="text-sm text-red-500">{errors.category.message}</p>
         )}
+        
       </div>
 
       {/* Date */}
